@@ -19,6 +19,8 @@ type Args struct {
 	Verbose             bool
 	Rename              bool
 	Version             bool
+	SkipBackup          bool
+	Revert              bool
 }
 
 func validate(args Args) error {
@@ -47,6 +49,8 @@ func InitArgs() (Args, error) {
 	fs.BoolVar(&args.Rename, "rename", true, "Keep the original filename or replace it with <basename>.terratag.tf")
 	fs.StringVar(&args.Type, "type", string(common.Terraform), "The IAC type. Valid values: terraform or terragrunt")
 	fs.BoolVar(&args.Version, "version", false, "Prints the version")
+	fs.BoolVar(&args.SkipBackup, "skipBackup", false, "Skip backup of original files")
+	fs.BoolVar(&args.Revert, "revert", false, "Revert all tagged files to their original state")
 
 	if err := fs.Parse(programArgs); err != nil {
 		return args, err

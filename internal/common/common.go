@@ -22,6 +22,8 @@ type TaggingArgs struct {
 	Matches             []string
 	IsSkipTerratagFiles bool
 	Rename              bool
+	SkipBackup          bool
+	Revert              bool
 	IACType             IACType
 	TFVersion           Version
 }
