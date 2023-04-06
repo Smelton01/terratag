@@ -52,9 +52,7 @@ func AppendLocalsBlock(file *hclwrite.File, filename string, terratag common.Ter
 		return
 	}
 
-	file.Body().AppendNewline()
 	locals := file.Body().AppendNewBlock("locals", nil)
-	file.Body().AppendNewline()
 
 	locals.Body().SetAttributeValue(key, cty.StringVal(terratag.Added))
 }

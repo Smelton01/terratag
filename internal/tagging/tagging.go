@@ -2,6 +2,8 @@ package tagging
 
 import (
 	"log"
+	"regexp"
+	"strings"
 
 	"github.com/env0/terratag/internal/common"
 	"github.com/env0/terratag/internal/convert"
@@ -21,7 +23,7 @@ func defaultTaggingFn(args TagBlockArgs) (*Result, error) {
 }
 
 func ParseHclValueStringToTokens(hclValueString string) hclwrite.Tokens {
-	file, diags := hclwrite.ParseConfig([]byte("tempKey = "+hclValueString), "", hcl.Pos{Line: 1, Column: 1})
+	file, diags := hclwrite.ParseConfig([]byte("tempKey = "+strings.TrimSpace(hclValueString)), "", hcl.Pos{Line: 1, Column: 1})
 	if diags.HasErrors() {
 		log.Print("error parsing hcl value string " + hclValueString)
 		panic(diags.Errs()[0])
@@ -53,6 +55,45 @@ func TagBlock(args TagBlockArgs) (string, error) {
 	args.Block.Body().SetAttributeRaw(args.TagId, newTagsValueTokens)
 
 	return newTagsValue, nil
+}
+
+// RemoveTerratagTags removes the terratag added tags from a resource
+func RemoveTerratagTags(args TagBlockArgs) (*Result, error) {
+	log.Println("[INFO] Removing terratag tags from resource: ", args.Block.Type(), args.Filename)
+	hasExistingTags, err := convert.MoveExistingTags(args.Filename, args.Terratag, args.Block, args.TagId)
+	if err != nil {
+		return &Result{SwappedTagsStrings: []string{}}, err
+	}
+
+	if !hasExistingTags {
+		log.Println("[INFO] No existing tags found, nothing to remove...", args.Filename)
+		return &Result{SwappedTagsStrings: []string{}}, nil
+	}
+
+	existingTagsKey := tag_keys.GetResourceExistingTagsKey(args.Filename, args.Block)
+	existingTagsExpression := convert.GetExistingTagsExpression(args.Terratag.Found[existingTagsKey], args.TfVersion)
+
+	// regex match an object/map in the existing tag expression
+	r, err := regexp.Compile(`(?s)\{.*\}`)
+	if err != nil {
+		log.Fatal(err)
+		return &Result{SwappedTagsStrings: []string{}}, err
+	}
+
+	hasOrigTags := r.MatchString(existingTagsExpression)
+	if !hasOrigTags {
+		log.Println("[INFO] No original tags found, removing tag block from resource: ", args.Filename)
+		args.Block.Body().RemoveAttribute(args.TagId)
+
+		return &Result{SwappedTagsStrings: []string{existingTagsKey}}, nil
+	}
+
+	origTagsValue := r.FindString(existingTagsExpression)
+	origTagsValueTokens := ParseHclValueStringToTokens(origTagsValue)
+
+	args.Block.Body().SetAttributeRaw(args.TagId, origTagsValueTokens)
+
+	return &Result{SwappedTagsStrings: []string{origTagsValue}}, nil
 }
 
 func HasResourceTagFn(resourceType string) bool {

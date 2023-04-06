@@ -65,6 +65,8 @@ func Terratag(args cli.Args) error {
 		Rename:              args.Rename,
 		IACType:             common.IACType(args.Type),
 		TFVersion:           *tfVersion,
+		SkipBackup:          args.SkipBackup,
+		Revert:              args.Revert,
 	}
 
 	counters := tagDirectoryResources(taggingArgs)
@@ -166,41 +168,68 @@ func tagFileResources(path string, args *common.TaggingArgs) (*counters, error) 
 			if err != nil {
 				return nil, err
 			}
-
+			log.Println("[INFO] isTaggable", args.Dir, isTaggable)
 			if isTaggable {
-				log.Print("[INFO] Resource taggable, processing...", resource.Labels())
-				perFileCounters.taggedResources += 1
-				result, err := tagging.TagResource(tagging.TagBlockArgs{
-					Filename:  filename,
-					Block:     resource,
-					Tags:      args.Tags,
-					Terratag:  terratag,
-					TagId:     providers.GetTagIdByResource(terraform.GetResourceType(*resource)),
-					TfVersion: args.TFVersion,
-				})
-				if err != nil {
-					return nil, err
-				}
+				if args.Revert {
+					// remove the terratag tag block
+					log.Println("[INFO] Reverting terratag tags", resource.Labels())
+					result, err := tagging.RemoveTerratagTags(tagging.TagBlockArgs{
+						Filename:  filename,
+						Block:     resource,
+						Tags:      args.Tags,
+						Terratag:  terratag,
+						TagId:     providers.GetTagIdByResource(terraform.GetResourceType(*resource)),
+						TfVersion: args.TFVersion,
+					})
+					if err != nil {
+						return nil, err
+					}
+					swappedTagsStrings = append(swappedTagsStrings, result.SwappedTagsStrings...)
 
-				swappedTagsStrings = append(swappedTagsStrings, result.SwappedTagsStrings...)
+				} else {
+					log.Print("[INFO] Resource taggable, processing...", resource.Labels())
+					perFileCounters.taggedResources += 1
+					result, err := tagging.TagResource(tagging.TagBlockArgs{
+						Filename:  filename,
+						Block:     resource,
+						Tags:      args.Tags,
+						Terratag:  terratag,
+						TagId:     providers.GetTagIdByResource(terraform.GetResourceType(*resource)),
+						TfVersion: args.TFVersion,
+					})
+					if err != nil {
+						return nil, err
+					}
+
+					swappedTagsStrings = append(swappedTagsStrings, result.SwappedTagsStrings...)
+				}
 			} else {
 				log.Print("[INFO] Resource not taggable, skipping.", resource.Labels())
 			}
 		case "locals":
-			// Checks if terratag_added_* exists.
-			// If it exists no need to append it again to Terratag file.
-			// Instead should override it.
-			attributes := resource.Body().Attributes()
-			key := tag_keys.GetTerratagAddedKey(filename)
-			for attributeKey, attribute := range attributes {
-				if attributeKey == key {
-					mergedAdded, err := convert.MergeTerratagLocals(attribute, terratag.Added)
-					if err != nil {
-						return nil, err
-					}
-					terratag.Added = mergedAdded
+			if args.Revert {
+				key := tag_keys.GetTerratagAddedKey(filename)
+				resource.Body().RemoveAttribute(key)
 
-					break
+				if len(resource.Body().Attributes()) == 0 {
+					hcl.Body().RemoveBlock(resource)
+				}
+			} else {
+				// Checks if terratag_added_* exists.
+				// If it exists no need to append it again to Terratag file.
+				// Instead should override it.
+				attributes := resource.Body().Attributes()
+				key := tag_keys.GetTerratagAddedKey(filename)
+				for attributeKey, attribute := range attributes {
+					if attributeKey == key {
+						mergedAdded, err := convert.MergeTerratagLocals(attribute, terratag.Added)
+						if err != nil {
+							return nil, err
+						}
+						terratag.Added = mergedAdded
+
+						break
+					}
 				}
 			}
 		}
@@ -208,14 +237,16 @@ func tagFileResources(path string, args *common.TaggingArgs) (*counters, error) 
 	}
 
 	if len(swappedTagsStrings) > 0 {
-		convert.AppendLocalsBlock(hcl, filename, terratag)
+		if !args.Revert {
+			convert.AppendLocalsBlock(hcl, filename, terratag)
+		}
 
 		text := string(hcl.Bytes())
 
 		swappedTagsStrings = append(swappedTagsStrings, terratag.Added)
 		text = convert.UnquoteTagsAttribute(swappedTagsStrings, text)
 
-		if err := file.ReplaceWithTerratagFile(path, text, args.Rename); err != nil {
+		if err := file.ReplaceWithTerratagFile(path, text, args.Rename, args.SkipBackup); err != nil {
 			return nil, err
 		}
 		perFileCounters.taggedFiles = 1

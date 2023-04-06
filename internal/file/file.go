@@ -11,7 +11,7 @@ import (
 	"go.uber.org/multierr"
 )
 
-func ReplaceWithTerratagFile(path string, textContent string, rename bool) error {
+func ReplaceWithTerratagFile(path string, textContent string, rename bool, skipBackup bool) error {
 	backupFilename := path + ".bak"
 
 	if rename {
@@ -21,9 +21,11 @@ func ReplaceWithTerratagFile(path string, textContent string, rename bool) error
 		}
 	}
 
-	log.Print("[INFO] Backing up ", path, " to ", backupFilename)
-	if err := os.Rename(path, backupFilename); err != nil {
-		return err
+	if !skipBackup {
+		log.Print("[INFO] Backing up ", path, " to ", backupFilename)
+		if err := os.Rename(path, backupFilename); err != nil {
+			return err
+		}
 	}
 
 	if !rename {

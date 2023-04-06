@@ -174,6 +174,8 @@ locals {
 - `-rename=false` - Instead of replacing files named `<basename>.tf` with `<basename>.terratag.tf`, keep the original filename
 - `-filter=<regular expression>` - defaults to `.*`. Only apply tags to the resource types matched by the regular expression
 - `-type=<terraform or terragrunt>` - defaults to `terraform`. If `terragrunt` is used, tags the files under `.terragrunt-cache` folder. Note: if Terragrunt does not create a `.terragrunt-cache` folder, use the default or omit.
+- `-revert=false` - Option to revert all the tags added by terratag
+- `-skipBackup=` - Option to skip creating the backup files of tagged resources
 
 ##### See more samples [here](https://github.com/env0/terratag/tree/master/test/fixture)
 
